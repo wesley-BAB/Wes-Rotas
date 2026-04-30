@@ -51,7 +51,7 @@ function MapController({ bounds }: { bounds: L.LatLngBounds | null }) {
   const map = useMap();
   useEffect(() => {
     if (bounds) {
-      map.fitBounds(bounds, { padding: [50, 50] });
+      map.fitBounds(bounds, { padding: [80, 80] });
     }
   }, [bounds, map]);
   return null;
@@ -70,22 +70,22 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
   const dashboardRef = React.useRef<HTMLDivElement>(null);
+  const exportRef = React.useRef<HTMLDivElement>(null);
 
   const handleExport = async () => {
-    if (!dashboardRef.current) return;
+    if (!exportRef.current) return;
     
     setExporting(true);
     try {
-      // Small delay to ensure everything is rendered
-      await new Promise(resolve => setTimeout(resolve, 500));
-      
-      const dataUrl = await htmlToImage.toPng(dashboardRef.current, {
+      // Ensure the export div is temporarily visible to capture (though it's off-screen)
+      const dataUrl = await htmlToImage.toPng(exportRef.current, {
         cacheBust: true,
-        backgroundColor: '#f8fafc',
+        backgroundColor: '#ffffff',
+        pixelRatio: 2, // Higher quality
       });
       
       const link = document.createElement('a');
-      link.download = `wes-rotas-${new Date().getTime()}.png`;
+      link.download = `wes-rotas-${new Date().toLocaleDateString('pt-BR').replace(/\//g, '-')}.png`;
       link.href = dataUrl;
       link.click();
     } catch (err) {
@@ -119,6 +119,7 @@ export default function App() {
     setLoading(true);
     setError(null);
     setRouteStats(null);
+    setExporting(false);
 
     try {
       // 1. Geocode only if lat/lon are missing
@@ -208,17 +209,96 @@ export default function App() {
   const bounds = routeStats ? L.geoJSON(routeStats.geometry).getBounds() : null;
 
   return (
-    <div ref={dashboardRef} className="flex flex-col md:flex-row h-screen bg-slate-50 font-sans">
-      {/* Sidebar */}
-      <div className="w-full md:w-96 xl:w-[450px] bg-white shadow-xl flex flex-col z-20 h-full overflow-hidden">
-        <header className="p-6 border-b border-slate-100 bg-white">
-          <div className="flex items-center gap-2 mb-1">
-            <div className="p-2 bg-indigo-600 rounded-lg">
-              <Navigation className="w-6 h-6 text-white" />
+    <div className="flex flex-col md:flex-row h-screen bg-slate-50 font-sans overflow-hidden">
+      {/* Hidden Export Template */}
+      <div className="absolute left-[-9999px] top-0">
+        <div ref={exportRef} className="w-[600px] bg-white p-8 space-y-6">
+          <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+            <div className="flex items-center gap-2">
+              <div className="p-2 bg-indigo-600 rounded-lg">
+                <Navigation className="w-6 h-6 text-white" />
+              </div>
+              <h1 className="text-2xl font-bold font-display text-slate-900 tracking-tight">Wes Rotas</h1>
             </div>
-            <h1 className="text-2xl font-bold font-display text-slate-900 tracking-tight">Wes Rotas</h1>
+            <div className="text-right">
+              <p className="text-xs text-slate-400 font-bold uppercase">Data</p>
+              <p className="text-sm font-medium text-slate-600">{new Date().toLocaleDateString('pt-BR')}</p>
+            </div>
           </div>
-          <p className="text-sm text-slate-500">Planeje sua viagem e controle os custos.</p>
+
+          <div className="space-y-4">
+            <div className="flex gap-4">
+              <div className="w-1 bg-indigo-500 rounded-full" />
+              <div className="space-y-4">
+                <div>
+                  <p className="text-xs font-bold text-indigo-500 uppercase">Origem</p>
+                  <p className="text-sm text-slate-800 font-medium">{origin.address}</p>
+                </div>
+                {stops.length > 0 && stops.map((s, i) => (
+                  <div key={i}>
+                    <p className="text-xs font-bold text-amber-500 uppercase">Parada {i + 1}</p>
+                    <p className="text-sm text-slate-800 font-medium">{s.address}</p>
+                  </div>
+                ))}
+                <div>
+                  <p className="text-xs font-bold text-emerald-500 uppercase">Destino</p>
+                  <p className="text-sm text-slate-800 font-medium">{destination.address}</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4 bg-slate-50 p-6 rounded-2xl">
+            <div className="space-y-1">
+              <p className="text-xs text-slate-400 font-bold uppercase">Distância</p>
+              <p className="text-2xl font-bold text-slate-800">{(distanceKm).toFixed(1)} km</p>
+            </div>
+            <div className="space-y-1">
+              <p className="text-xs text-slate-400 font-bold uppercase">Combustível</p>
+              <p className="text-2xl font-bold text-slate-800">R$ {fuelCost.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+            </div>
+            <div className="space-y-1">
+              <p className="text-xs text-slate-400 font-bold uppercase">Pedágios</p>
+              <p className="text-2xl font-bold text-slate-800">R$ {parseFloat(tollsInput || '0').toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+            </div>
+            <div className="bg-indigo-600 p-4 rounded-xl space-y-1 col-span-2">
+              <p className="text-indigo-100 text-xs font-bold uppercase">Valor Total Estimado</p>
+              <p className="text-3xl font-bold text-white">R$ {totalCost.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+            </div>
+          </div>
+          
+          <div className="pt-4 text-center">
+            <p className="text-[10px] text-slate-300 font-medium italic">Calculado via Wes Rotas - Planejamento Inteligente de Viagens</p>
+          </div>
+        </div>
+      </div>
+
+      {/* Main UI */}
+      <div className="w-full md:w-[400px] xl:w-[480px] bg-white shadow-xl flex flex-col z-20 h-full overflow-hidden">
+        <header className="p-6 border-b border-slate-100 bg-white flex justify-between items-start">
+          <div>
+            <div className="flex items-center gap-2 mb-1">
+              <div className="p-2 bg-indigo-600 rounded-lg">
+                <Navigation className="w-6 h-6 text-white" />
+              </div>
+              <h1 className="text-2xl font-bold font-display text-slate-900 tracking-tight">Wes Rotas</h1>
+            </div>
+            <p className="text-sm text-slate-500">Planeje sua viagem e controle os custos.</p>
+          </div>
+          {(origin.address || destination.address || stops.length > 0) && (
+            <button 
+              onClick={() => {
+                setOrigin({ address: '', lat: null, lon: null });
+                setDestination({ address: '', lat: null, lon: null });
+                setStops([]);
+                setRouteStats(null);
+                setError(null);
+              }}
+              className="text-xs font-bold text-slate-400 hover:text-red-500 transition-colors uppercase tracking-widest pt-2"
+            >
+              Limpar
+            </button>
+          )}
         </header>
 
         <div className="flex-1 overflow-y-auto p-6 space-y-8">
