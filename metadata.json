@@ -1,0 +1,8 @@
+{
+  "name": "Wes Rotas",
+  "description": "Calculadora de rotas e custos de viagem com integração de mapas, consumo de combustível e estimativa de pedágios.",
+  "requestFramePermissions": [
+    "geolocation"
+  ],
+  "majorCapabilities": []
+}
