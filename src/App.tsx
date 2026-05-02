@@ -32,7 +32,14 @@ const DefaultIcon = L.icon({
   shadowSize: [41, 41]
 });
 
-L.Marker.prototype.options.icon = DefaultIcon;
+const createLetterIcon = (letter: string, color: string) => {
+  return L.divIcon({
+    html: `<div class="w-8 h-8 flex items-center justify-center rounded-full border-2 border-white shadow-lg text-white font-bold text-sm" style="background-color: ${color}">${letter}</div>`,
+    className: '',
+    iconSize: [32, 32],
+    iconAnchor: [16, 32],
+  });
+};
 
 interface Location {
   address: string;
@@ -40,10 +47,16 @@ interface Location {
   lon: number | null;
 }
 
+interface LegStats {
+  distance: number;
+  duration: number;
+}
+
 interface RouteStats {
   distance: number; // in meters
   duration: number; // in seconds
   geometry: any;
+  legs: LegStats[];
 }
 
 // Center map view when route changes
@@ -168,7 +181,7 @@ export default function App() {
       ].map(c => c.join(',')).join(';');
 
       // 3. Fetch Route from OSRM
-      const routeRes = await fetch(`https://router.project-osrm.org/route/v1/driving/${allCoords}?overview=full&geometries=geojson`);
+      const routeRes = await fetch(`https://router.project-osrm.org/route/v1/driving/${allCoords}?overview=full&geometries=geojson&steps=false`);
       const routeData = await routeRes.json();
 
       if (routeData.code === 'Ok') {
@@ -176,7 +189,11 @@ export default function App() {
         setRouteStats({
           distance: route.distance,
           duration: route.duration,
-          geometry: route.geometry
+          geometry: route.geometry,
+          legs: route.legs.map((l: any) => ({
+            distance: l.distance,
+            duration: l.duration
+          }))
         });
       } else {
         setError("Não foi possível calcular a rota entre os pontos informados.");
@@ -229,20 +246,40 @@ export default function App() {
           <div className="space-y-4">
             <div className="flex gap-4">
               <div className="w-1 bg-indigo-500 rounded-full" />
-              <div className="space-y-4">
+              <div className="space-y-4 flex-1">
                 <div>
-                  <p className="text-xs font-bold text-indigo-500 uppercase">Origem</p>
+                  <p className="text-xs font-bold text-indigo-500 uppercase">A - Origem</p>
                   <p className="text-sm text-slate-800 font-medium">{origin.address}</p>
                 </div>
                 {stops.length > 0 && stops.map((s, i) => (
-                  <div key={i}>
-                    <p className="text-xs font-bold text-amber-500 uppercase">Parada {i + 1}</p>
-                    <p className="text-sm text-slate-800 font-medium">{s.address}</p>
+                  <div key={i} className="flex justify-between items-start">
+                    <div>
+                      <p className="text-xs font-bold text-amber-500 uppercase">{String.fromCharCode(66 + i)} - Parada {i + 1}</p>
+                      <p className="text-sm text-slate-800 font-medium">{s.address}</p>
+                    </div>
+                    {routeStats && routeStats.legs[i] && (
+                      <div className="text-right">
+                        <p className="text-[10px] font-bold text-slate-400">TRECHO {i + 1}</p>
+                        <p className="text-xs font-bold text-slate-600">
+                          {(routeStats.legs[i].distance / 1000).toFixed(1)}km | R$ {((routeStats.legs[i].distance / 1000 / parseFloat(autonomy || '1')) * parseFloat(fuelPrice || '0')).toFixed(2)}
+                        </p>
+                      </div>
+                    )}
                   </div>
                 ))}
-                <div>
-                  <p className="text-xs font-bold text-emerald-500 uppercase">Destino</p>
-                  <p className="text-sm text-slate-800 font-medium">{destination.address}</p>
+                <div className="flex justify-between items-start">
+                  <div>
+                    <p className="text-xs font-bold text-emerald-500 uppercase">{String.fromCharCode(66 + stops.length)} - Destino</p>
+                    <p className="text-sm text-slate-800 font-medium">{destination.address}</p>
+                  </div>
+                  {routeStats && routeStats.legs[stops.length] && (
+                    <div className="text-right">
+                      <p className="text-[10px] font-bold text-slate-400">TRECHO FINAL</p>
+                      <p className="text-xs font-bold text-slate-600">
+                        {(routeStats.legs[stops.length].distance / 1000).toFixed(1)}km | R$ {((routeStats.legs[stops.length].distance / 1000 / parseFloat(autonomy || '1')) * parseFloat(fuelPrice || '0')).toFixed(2)}
+                      </p>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -441,6 +478,38 @@ export default function App() {
             </motion.div>
           )}
 
+          <AnimatePresence>
+            {routeStats && (
+              <motion.div 
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: 'auto' }}
+                className="pt-4 border-t border-slate-100"
+              >
+                <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4">Detalhamento Financeiro</h3>
+                <div className="space-y-4">
+                  {routeStats.legs.map((leg, idx) => {
+                    const legKm = leg.distance / 1000;
+                    const legCost = (legKm / parseFloat(autonomy || '1')) * parseFloat(fuelPrice || '0');
+                    return (
+                      <div key={idx} className="flex justify-between items-center text-sm">
+                        <div className="flex items-center gap-2">
+                          <div className="w-6 h-6 rounded-full bg-slate-100 text-[10px] flex items-center justify-center font-bold text-slate-500">
+                            {idx + 1}
+                          </div>
+                          <span className="text-slate-600 font-medium">Trecho {idx + 1}</span>
+                        </div>
+                        <div className="text-right">
+                          <p className="font-bold text-slate-800">R$ {legCost.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+                          <p className="text-[10px] text-slate-400 uppercase font-bold">{legKm.toFixed(1)} km</p>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
           <button 
             onClick={handleCalculate}
             disabled={loading}
@@ -523,21 +592,21 @@ export default function App() {
           />
           
           {origin.lat && origin.lon && (
-            <Marker position={[origin.lat, origin.lon]}>
+            <Marker position={[origin.lat, origin.lon]} icon={createLetterIcon('A', '#4f46e5')}>
               <Popup>Origem: {origin.address}</Popup>
             </Marker>
           )}
 
           {stops.map((stop, i) => (
             stop.lat && stop.lon && (
-              <Marker key={i} position={[stop.lat, stop.lon]}>
+              <Marker key={i} position={[stop.lat, stop.lon]} icon={createLetterIcon(String.fromCharCode(66 + i), '#d97706')}>
                 <Popup>Parada {i + 1}: {stop.address}</Popup>
               </Marker>
             )
           ))}
 
           {destination.lat && destination.lon && (
-            <Marker position={[destination.lat, destination.lon]}>
+            <Marker position={[destination.lat, destination.lon]} icon={createLetterIcon(String.fromCharCode(66 + stops.length), '#10b981')}>
               <Popup>Destino: {destination.address}</Popup>
             </Marker>
           )}
